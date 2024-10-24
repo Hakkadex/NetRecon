@@ -1,0 +1,148 @@
+#!/bin/bash
+
+# NetRecon Complete Installation Script
+
+echo "Updating system and installing dependencies..."
+sudo apt update
+sudo apt install -y python3 python3-pip tcpdump whois
+
+echo "Installing required Python libraries..."
+pip3 install requests
+
+# Creating NetRecon tool directory
+TOOL_DIR="/usr/local/bin/netrecon"
+sudo mkdir -p $TOOL_DIR
+
+# Writing the NetRecon Python script to the installation directory
+echo "Creating NetRecon tool script..."
+sudo tee $TOOL_DIR/netrecon.py > /dev/null << 'EOF'
+#!/usr/bin/env python3
+
+import os
+import argparse
+import subprocess
+import requests
+import json
+
+# Global API tokens (replace these with your own tokens)
+SHODAN_API_KEY = 'YBfrjqgfJBTqkwVAXMGE24VNNFDuDtHz'
+IPINFO_API_KEY = 'b84d8c06b5f840'
+OTX_API_KEY = '26aa76c5be8095b22d932a6088223a543c8b3709f3b984fb42a2b6cbcc25400a'
+
+def capture_traffic(ip, interface="eth0"):
+    """Capture traffic for a specific IP address using tcpdump"""
+    capture_file = f"capture_{ip}.pcap"
+    command = f"sudo tcpdump -i {interface} host {ip} -w {capture_file}"
+    print(f"Capturing traffic for {ip} on interface {interface}...")
+    subprocess.run(command, shell=True)
+    print(f"Capture saved to {capture_file}")
+
+def whois_lookup(ip):
+    """Perform a WHOIS lookup on the IP"""
+    print(f"Performing WHOIS lookup for {ip}...")
+    result = subprocess.run(['whois', ip], capture_output=True, text=True)
+    return result.stdout
+
+def shodan_lookup(ip):
+    """Perform a Shodan lookup on the IP address"""
+    url = f"https://api.shodan.io/shodan/host/{ip}?key={SHODAN_API_KEY}"
+    print(f"Querying Shodan for {ip}...")
+    response = requests.get(url)
+    return response.json()
+
+def ipinfo_lookup(ip):
+    """Check if the IP is a VPN or proxy via IPinfo.io"""
+    url = f"https://ipinfo.io/{ip}?token={IPINFO_API_KEY}"
+    print(f"Checking IPinfo.io for VPN/Proxy info on {ip}...")
+    response = requests.get(url)
+    data = response.json()
+    if "bogon" in data:
+        return "IP is a bogon (private/reserved address)"
+    if "org" in data and "vpn" in data['org'].lower():
+        return "IP belongs to a known VPN"
+    if "proxy" in data:
+        return "IP is a known proxy"
+    return "IP does not appear to be a VPN or proxy"
+
+def otx_lookup(ip):
+    """Check IP reputation using AlienVault OTX"""
+    url = f"https://otx.alienvault.com/api/v1/indicators/IPv4/{ip}/general"
+    headers = {'X-OTX-API-KEY': OTX_API_KEY}
+    print(f"Querying AlienVault OTX for threat intelligence on {ip}...")
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        return response.json()
+    return {}
+
+def generate_report(ip, whois_data, shodan_data, ipinfo_data, otx_data):
+    """Generate a text report summarizing the investigation"""
+    report_filename = f"report_{ip}.txt"
+    with open(report_filename, 'w') as report:
+        report.write(f"=== NetRecon Report for {ip} ===\n\n")
+        
+        report.write("------ WHOIS Lookup ------\n")
+        report.write(whois_data + "\n\n")
+        
+        report.write("------ Shodan Data ------\n")
+        report.write(json.dumps(shodan_data, indent=4) + "\n\n")
+        
+        report.write("------ IPinfo.io Data (VPN/Proxy) ------\n")
+        report.write(ipinfo_data + "\n\n")
+        
+        report.write("------ AlienVault OTX Data ------\n")
+        report.write(json.dumps(otx_data, indent=4) + "\n\n")
+
+    print(f"Report saved as {report_filename}")
+
+def main():
+    parser = argparse.ArgumentParser(description="NetRecon: A tool for investigating cyber attacks via IP analysis.")
+    
+    parser.add_argument("command", choices=['capture', 'recon', 'trace', 'report'], help="Command to run: capture traffic, recon IP, trace VPN/proxy, generate report")
+    parser.add_argument("ip", help="Target IP address")
+    parser.add_argument("-i", "--interface", default="eth0", help="Network interface for capturing traffic (default: eth0)")
+
+    args = parser.parse_args()
+
+    if args.command == "capture":
+        capture_traffic(args.ip, args.interface)
+    elif args.command == "recon":
+        whois_data = whois_lookup(args.ip)
+        shodan_data = shodan_lookup(args.ip)
+        ipinfo_data = ipinfo_lookup(args.ip)
+        otx_data = otx_lookup(args.ip)
+        print("\nRecon Completed!")
+        print("\nWHOIS Data:\n", whois_data)
+        print("\nShodan Data:\n", json.dumps(shodan_data, indent=4))
+        print("\nIPinfo Data:\n", ipinfo_data)
+        print("\nOTX Data:\n", json.dumps(otx_data, indent=4))
+    elif args.command == "trace":
+        ipinfo_data = ipinfo_lookup(args.ip)
+        print(f"\nVPN/Proxy Check for {args.ip}:\n{ipinfo_data}")
+    elif args.command == "report":
+        whois_data = whois_lookup(args.ip)
+        shodan_data = shodan_lookup(args.ip)
+        ipinfo_data = ipinfo_lookup(args.ip)
+        otx_data = otx_lookup(args.ip)
+        generate_report(args.ip, whois_data, shodan_data, ipinfo_data, otx_data)
+
+if __name__ == "__main__":
+    main()
+EOF
+
+# Make the script executable
+sudo chmod +x $TOOL_DIR/netrecon.py
+
+# Create a symlink to the tool
+echo "Creating symlink for netrecon command..."
+sudo ln -sf $TOOL_DIR/netrecon.py /usr/local/bin/netrecon
+
+# Provide success message
+echo "NetRecon tool installed successfully!"
+echo "You can now use the 'netrecon' command from anywhere in your terminal."
+
+# Tool usage instructions
+echo -e "\nUsage examples:"
+echo "  netrecon capture [target_ip]        # Capture traffic for an IP"
+echo "  netrecon recon [target_ip]          # Perform recon on an IP"
+echo "  netrecon trace [target_ip]          # Trace VPN/Proxy information for an IP"
+echo "  netrecon report [target_ip]         # Generate a report for an IP"
