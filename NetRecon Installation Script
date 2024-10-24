@@ -25,9 +25,9 @@ import requests
 import json
 
 # Global API tokens (replace these with your own tokens)
-SHODAN_API_KEY = 'YBfrjqgfJBTqkwVAXMGE24VNNFDuDtHz'
-IPINFO_API_KEY = 'b84d8c06b5f840'
-OTX_API_KEY = '26aa76c5be8095b22d932a6088223a543c8b3709f3b984fb42a2b6cbcc25400a'
+SHODAN_API_KEY = 'Enter_API_Key'
+IPINFO_API_KEY = 'Enter_API_Key'
+OTX_API_KEY = 'Enter_API_Key'
 
 def capture_traffic(ip, interface="eth0"):
     """Capture traffic for a specific IP address using tcpdump"""
