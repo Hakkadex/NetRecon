@@ -4,7 +4,9 @@ To use the tool you have 4 commands
 This is the part of the script to look for to enter your API keys
 
 SHODAN_API_KEY = 'your_shodan_api_key'
+
 IPINFO_API_KEY = 'your_ipinfo_api_key'
+
 OTX_API_KEY = 'your_otx_api_key'
 
 Tool usage commands in Linux terminal
